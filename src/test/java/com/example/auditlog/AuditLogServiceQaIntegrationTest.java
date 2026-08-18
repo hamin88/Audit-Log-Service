@@ -212,7 +212,8 @@ class AuditLogServiceQaIntegrationTest {
                 }
                 """);
 
-        mockMvc.perform(get("/audit/verify"))
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-admin", "audit-admin-pass")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(true))
                 .andExpect(jsonPath("$.violationType").value("NONE"));
@@ -220,6 +221,7 @@ class AuditLogServiceQaIntegrationTest {
 
     private JsonNode postEvent(String requestBody) throws Exception {
         String response = mockMvc.perform(post("/audit/events")
+                        .with(httpBasic("audit-admin", "audit-admin-pass"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())

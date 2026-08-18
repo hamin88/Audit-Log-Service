@@ -2,6 +2,7 @@ package com.example.auditlog.api;
 
 import com.example.auditlog.service.AuditVerificationResult;
 import com.example.auditlog.service.AuditVerificationService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,6 +18,7 @@ public class AuditVerificationController {
     }
 
     @GetMapping("/verify")
+    @PreAuthorize("hasAnyRole('ADMIN','EXPORTER')")
     public AuditVerificationResponse verify() {
         AuditVerificationResult result = auditVerificationService.verify();
         return new AuditVerificationResponse(

@@ -122,7 +122,8 @@ class AuditEventApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].payload.metadata.password").value("[REDACTED]"))
                 .andExpect(jsonPath("$.content[0].payload.metadata.nested[0].cardNumber").value("[REDACTED]"));
 
-        mockMvc.perform(get("/audit/verify"))
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-admin", "audit-admin-pass")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(true))
                 .andExpect(jsonPath("$.violationType").value("NONE"));
@@ -131,6 +132,7 @@ class AuditEventApiIntegrationTest {
     @Test
     void rejectsNonObjectPayloads() throws Exception {
         mockMvc.perform(post("/audit/events")
+                        .with(httpBasic("audit-admin", "audit-admin-pass"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -235,7 +237,8 @@ class AuditEventApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].status").value("ARCHIVED"))
                 .andExpect(jsonPath("$.content[0].archivedAt").isNotEmpty());
 
-        mockMvc.perform(get("/audit/verify"))
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-admin", "audit-admin-pass")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(true))
                 .andExpect(jsonPath("$.violationType").value("NONE"));
