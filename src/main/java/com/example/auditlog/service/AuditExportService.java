@@ -24,7 +24,7 @@ public class AuditExportService {
 
     private static final int EXPORT_PAGE_SIZE = 500;
     private static final String HASH_FORMULA =
-            "SHA256(eventId + timestamp + eventType + actorId + resourceType + resourceId + payload + previousHash)";
+            "HMAC-SHA256(eventId|timestamp|eventType|actorId|resourceType|resourceId|payload|previousHash) with canonical length-prefixed field encoding";
 
     private final AuditEventRepository auditEventRepository;
     private final AuditHashService auditHashService;
@@ -74,7 +74,7 @@ public class AuditExportService {
                 firstPreviousHash,
                 lastCurrentHash,
                 !records.isEmpty(),
-                "SHA-256",
+                "HMAC-SHA256",
                 HASH_FORMULA
         );
         return new AuditExportBundleResponse(metadata, records);

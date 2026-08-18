@@ -152,3 +152,16 @@ This project was intentionally built to align with the engineering plan in `task
 - Create Project summary (README.md)
     (Prompt: Can you summarize our progress across all phases of the Audit Log Service project?)
     (Prompt: where can I document it?)
+
+- Spring security Implementation:
+    (Prompt: Implement Spring security)
+
+- Cryptographic Hash & Delimiter Hardening
+    (Prompt:  
+    Act as a senior Spring Boot 3.5.0 and Java 17 security and backend architect. We need to refactor our tamper-evident Audit Log Service to resolve critical security, concurrency, and hash-chain vulnerabilities identified in our evaluation audit:
+
+    Cryptographic Hash & Delimiter Hardening improvement:
+    - Refactor `AuditHashService` to use a canonical, length-prefixed encoding or explicit field delimiters (e.g., pipe `|` separators) for all concatenated fields (`eventId`, `timestamp`, `eventType`, `actorId`, `resourceType`, `resourceId`, `payload`, `previousHash`) to prevent boundary-shifting hash collisions.
+    - Upgrade the bare SHA-256 hash to use an HMAC-SHA256 (keyed hashing) using an externalized secret property so that raw database write access alone cannot forge a valid chain.
+    
+    )
