@@ -1,6 +1,7 @@
 package com.example.auditlog.support;
 
 import com.example.auditlog.service.InvalidAuditPayloadException;
+import com.example.auditlog.service.InvalidAuditExportException;
 import com.example.auditlog.service.InvalidAuditQueryException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -25,6 +26,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler({
             HttpMessageNotReadableException.class,
+            InvalidAuditExportException.class,
             InvalidAuditPayloadException.class,
             InvalidAuditQueryException.class
     })

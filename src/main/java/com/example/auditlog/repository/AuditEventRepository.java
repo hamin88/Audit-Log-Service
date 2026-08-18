@@ -19,4 +19,6 @@ public interface AuditEventRepository {
     int archiveOlderThan(Instant cutoff, Instant archivedAt);
 
     Page<AuditEvent> search(AuditEventSearchCriteria criteria, Pageable pageable);
+
+    Page<AuditEvent> export(AuditExportCriteria criteria, Pageable pageable);
 }

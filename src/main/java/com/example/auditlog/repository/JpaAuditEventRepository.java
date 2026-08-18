@@ -85,6 +85,28 @@ class JpaAuditEventRepository implements AuditEventRepository {
         return new PageImpl<>(content, pageable, countQuery.getSingleResult());
     }
 
+    @Override
+    public Page<AuditEvent> export(AuditExportCriteria criteria, Pageable pageable) {
+        QueryParts parts = buildExportWhereClause(criteria);
+        TypedQuery<AuditEvent> query = entityManager.createQuery(
+                "select e from AuditEvent e" + parts.whereClause() + " order by e.timestamp asc, e.eventId asc",
+                AuditEvent.class
+        );
+        TypedQuery<Long> countQuery = entityManager.createQuery(
+                "select count(e) from AuditEvent e" + parts.whereClause(),
+                Long.class
+        );
+
+        parts.bind(query);
+        parts.bind(countQuery);
+
+        List<AuditEvent> content = query
+                .setFirstResult((int) pageable.getOffset())
+                .setMaxResults(pageable.getPageSize())
+                .getResultList();
+        return new PageImpl<>(content, pageable, countQuery.getSingleResult());
+    }
+
     private QueryParts buildWhereClause(AuditEventSearchCriteria criteria) {
         List<String> predicates = new ArrayList<>();
         List<Parameter> parameters = new ArrayList<>();
@@ -93,6 +115,26 @@ class JpaAuditEventRepository implements AuditEventRepository {
         addEquals(predicates, parameters, "resourceType", criteria.resourceType());
         addEquals(predicates, parameters, "resourceId", criteria.resourceId());
         addEquals(predicates, parameters, "eventType", criteria.eventType());
+
+        if (criteria.from() != null) {
+            predicates.add("e.timestamp >= :from");
+            parameters.add(new Parameter("from", criteria.from()));
+        }
+        if (criteria.to() != null) {
+            predicates.add("e.timestamp <= :to");
+            parameters.add(new Parameter("to", criteria.to()));
+        }
+
+        String whereClause = predicates.isEmpty() ? "" : " where " + String.join(" and ", predicates);
+        return new QueryParts(whereClause, parameters);
+    }
+
+    private QueryParts buildExportWhereClause(AuditExportCriteria criteria) {
+        List<String> predicates = new ArrayList<>();
+        List<Parameter> parameters = new ArrayList<>();
+
+        addEquals(predicates, parameters, "actorId", criteria.actorId());
+        addEquals(predicates, parameters, "resourceId", criteria.resourceId());
 
         if (criteria.from() != null) {
             predicates.add("e.timestamp >= :from");

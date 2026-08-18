@@ -36,6 +36,10 @@ public class AuditHashService {
     }
 
     private String sha256(String input) {
+        return sha256Hex(input);
+    }
+
+    public String sha256Hex(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(input.getBytes(StandardCharsets.UTF_8)));
