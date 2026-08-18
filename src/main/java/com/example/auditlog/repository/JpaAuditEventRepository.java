@@ -37,6 +37,15 @@ class JpaAuditEventRepository implements AuditEventRepository {
     }
 
     @Override
+    public List<AuditEvent> findAllChronological() {
+        return entityManager.createQuery(
+                        "select e from AuditEvent e order by e.timestamp asc, e.eventId asc",
+                        AuditEvent.class
+                )
+                .getResultList();
+    }
+
+    @Override
     public Page<AuditEvent> search(AuditEventSearchCriteria criteria, Pageable pageable) {
         QueryParts parts = buildWhereClause(criteria);
         TypedQuery<AuditEvent> query = entityManager.createQuery(

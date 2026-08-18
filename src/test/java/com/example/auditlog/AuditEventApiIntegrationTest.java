@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -27,6 +28,9 @@ class AuditEventApiIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void appendsEventsWithServerAssignedIdsTimestampsAndHashChain() throws Exception {
@@ -102,6 +106,68 @@ class AuditEventApiIntegrationTest {
                         .param("from", "2026-08-18T12:00:00Z")
                         .param("to", "2026-08-18T11:00:00Z"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void verifiesIntactAuditHashChain() throws Exception {
+        postEvent("""
+                {
+                  "eventType": "RECORD_READ",
+                  "actorId": "auditor-1",
+                  "resourceType": "CLIENT_ACCOUNT",
+                  "resourceId": "acct-100",
+                  "payload": {"reason": "regulatory-review"}
+                }
+                """);
+
+        mockMvc.perform(get("/audit/verify"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isValid").value(true))
+                .andExpect(jsonPath("$.brokenAtEventId").doesNotExist())
+                .andExpect(jsonPath("$.violationType").value("NONE"));
+    }
+
+    @Test
+    void reportsFirstPreviousHashMismatch() throws Exception {
+        postEvent("""
+                {
+                  "eventType": "RECORD_READ",
+                  "actorId": "auditor-1",
+                  "resourceType": "CLIENT_ACCOUNT",
+                  "resourceId": "acct-100",
+                  "payload": {"reason": "regulatory-review"}
+                }
+                """);
+
+        String replacement = "1111111111111111111111111111111111111111111111111111111111111111";
+        jdbcTemplate.update("update audit_events set previous_hash = ?", replacement);
+
+        mockMvc.perform(get("/audit/verify"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isValid").value(false))
+                .andExpect(jsonPath("$.brokenAtEventId").isNotEmpty())
+                .andExpect(jsonPath("$.violationType").value("PREVIOUS_HASH_MISMATCH"));
+    }
+
+    @Test
+    void reportsHashMismatchWhenStoredEventContentChanges() throws Exception {
+        postEvent("""
+                {
+                  "eventType": "RECORD_READ",
+                  "actorId": "auditor-1",
+                  "resourceType": "CLIENT_ACCOUNT",
+                  "resourceId": "acct-100",
+                  "payload": {"reason": "regulatory-review"}
+                }
+                """);
+
+        jdbcTemplate.update("update audit_events set payload = ?", "{\"reason\":\"altered\"}");
+
+        mockMvc.perform(get("/audit/verify"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isValid").value(false))
+                .andExpect(jsonPath("$.brokenAtEventId").isNotEmpty())
+                .andExpect(jsonPath("$.violationType").value("HASH_MISMATCH"));
     }
 
     private JsonNode postEvent(String requestBody) throws Exception {

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Service
@@ -34,7 +35,7 @@ public class AuditEventService {
     @Transactional
     public AuditEvent append(AuditEventRequest request) {
         UUID eventId = UUID.randomUUID();
-        Instant timestamp = Instant.now();
+        Instant timestamp = Instant.now().truncatedTo(ChronoUnit.MICROS);
         String payload = canonicalPayload(request);
         String previousHash = auditEventRepository.findLatest()
                 .map(AuditEvent::getCurrentHash)
