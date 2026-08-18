@@ -2,6 +2,8 @@ package com.example.auditlog.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -40,6 +42,13 @@ public class AuditEvent {
     @Column(nullable = false, updatable = false, length = 64)
     private String currentHash;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AuditEventStatus status = AuditEventStatus.ACTIVE;
+
+    @Column
+    private Instant archivedAt;
+
     protected AuditEvent() {
     }
 
@@ -63,6 +72,7 @@ public class AuditEvent {
         this.payload = payload;
         this.previousHash = previousHash;
         this.currentHash = currentHash;
+        this.status = AuditEventStatus.ACTIVE;
     }
 
     public UUID getEventId() {
@@ -99,5 +109,21 @@ public class AuditEvent {
 
     public String getCurrentHash() {
         return currentHash;
+    }
+
+    public AuditEventStatus getStatus() {
+        return status;
+    }
+
+    public Instant getArchivedAt() {
+        return archivedAt;
+    }
+
+    public void archive(Instant archivedAt) {
+        if (status == AuditEventStatus.ARCHIVED) {
+            return;
+        }
+        this.status = AuditEventStatus.ARCHIVED;
+        this.archivedAt = archivedAt;
     }
 }

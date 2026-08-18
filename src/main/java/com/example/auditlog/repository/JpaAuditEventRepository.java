@@ -1,6 +1,7 @@
 package com.example.auditlog.repository;
 
 import com.example.auditlog.domain.AuditEvent;
+import com.example.auditlog.domain.AuditEventStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.TypedQuery;
@@ -9,6 +10,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -43,6 +45,22 @@ class JpaAuditEventRepository implements AuditEventRepository {
                         AuditEvent.class
                 )
                 .getResultList();
+    }
+
+    @Override
+    public int archiveOlderThan(Instant cutoff, Instant archivedAt) {
+        return entityManager.createQuery("""
+                        update AuditEvent e
+                        set e.status = :archivedStatus,
+                            e.archivedAt = :archivedAt
+                        where e.timestamp < :cutoff
+                          and e.status = :activeStatus
+                        """)
+                .setParameter("cutoff", cutoff)
+                .setParameter("archivedAt", archivedAt)
+                .setParameter("archivedStatus", AuditEventStatus.ARCHIVED)
+                .setParameter("activeStatus", AuditEventStatus.ACTIVE)
+                .executeUpdate();
     }
 
     @Override

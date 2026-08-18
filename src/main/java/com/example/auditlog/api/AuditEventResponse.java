@@ -1,6 +1,7 @@
 package com.example.auditlog.api;
 
 import com.example.auditlog.domain.AuditEvent;
+import com.example.auditlog.domain.AuditEventStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.Instant;
@@ -15,7 +16,9 @@ public record AuditEventResponse(
         String resourceId,
         JsonNode payload,
         String previousHash,
-        String currentHash
+        String currentHash,
+        AuditEventStatus status,
+        Instant archivedAt
 ) {
 
     public static AuditEventResponse from(AuditEvent event, JsonNode payload) {
@@ -28,7 +31,9 @@ public record AuditEventResponse(
                 event.getResourceId(),
                 payload,
                 event.getPreviousHash(),
-                event.getCurrentHash()
+                event.getCurrentHash(),
+                event.getStatus(),
+                event.getArchivedAt()
         );
     }
 }

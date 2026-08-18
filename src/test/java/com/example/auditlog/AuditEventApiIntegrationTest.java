@@ -1,6 +1,7 @@
 package com.example.auditlog;
 
 import com.example.auditlog.service.AuditHashService;
+import com.example.auditlog.service.AuditRetentionService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "audit.retention.period=PT0S")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class AuditEventApiIntegrationTest {
@@ -31,6 +32,9 @@ class AuditEventApiIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private AuditRetentionService auditRetentionService;
 
     @Test
     void appendsEventsWithServerAssignedIdsTimestampsAndHashChain() throws Exception {
@@ -168,6 +172,33 @@ class AuditEventApiIntegrationTest {
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").isNotEmpty())
                 .andExpect(jsonPath("$.violationType").value("HASH_MISMATCH"));
+    }
+
+    @Test
+    void archivesExpiredEventsWithoutBreakingHashChainVerification() throws Exception {
+        JsonNode event = postEvent("""
+                {
+                  "eventType": "RECORD_READ",
+                  "actorId": "auditor-1",
+                  "resourceType": "CLIENT_ACCOUNT",
+                  "resourceId": "acct-100",
+                  "payload": {"reason": "regulatory-review"}
+                }
+                """);
+
+        assertThat(auditRetentionService.archiveExpiredEvents()).isEqualTo(1);
+
+        mockMvc.perform(get("/audit/events")
+                        .param("resourceId", "acct-100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].eventId").value(event.get("eventId").asText()))
+                .andExpect(jsonPath("$.content[0].status").value("ARCHIVED"))
+                .andExpect(jsonPath("$.content[0].archivedAt").isNotEmpty());
+
+        mockMvc.perform(get("/audit/verify"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isValid").value(true))
+                .andExpect(jsonPath("$.violationType").value("NONE"));
     }
 
     private JsonNode postEvent(String requestBody) throws Exception {

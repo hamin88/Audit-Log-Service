@@ -12,3 +12,8 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+
+audit:
+  retention:
+    period: 365d
+    archive-cron: "0 0 2 * * *"
