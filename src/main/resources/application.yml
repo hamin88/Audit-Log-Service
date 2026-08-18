@@ -17,3 +17,22 @@ audit:
   retention:
     period: 365d
     archive-cron: "0 0 2 * * *"
+  redaction:
+    replacement: "[REDACTED]"
+    sensitive-keys:
+      - password
+      - passcode
+      - secret
+      - token
+      - authorization
+      - ssn
+      - socialSecurityNumber
+      - creditCard
+      - creditCardNumber
+      - cardNumber
+      - cvv
+      - pan
+      - accountNumber
+      - email
+      - phone
+      - dob

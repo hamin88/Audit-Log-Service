@@ -89,6 +89,46 @@ class AuditEventApiIntegrationTest {
     }
 
     @Test
+    void redactedSearchMasksConfiguredSensitivePayloadFieldsWithoutChangingStoredPayload() throws Exception {
+        postEvent("""
+                {
+                  "eventType": "RECORD_READ",
+                  "actorId": "auditor-1",
+                  "resourceType": "CLIENT_ACCOUNT",
+                  "resourceId": "acct-200",
+                  "payload": {
+                    "email": "client@example.com",
+                    "reason": "regulatory-review",
+                    "metadata": {
+                      "password": "do-not-return",
+                      "nested": [{"cardNumber": "4111111111111111"}]
+                    }
+                  }
+                }
+                """);
+
+        mockMvc.perform(get("/audit/events")
+                        .param("resourceId", "acct-200"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].payload.email").value("client@example.com"))
+                .andExpect(jsonPath("$.content[0].payload.metadata.password").value("do-not-return"))
+                .andExpect(jsonPath("$.content[0].payload.metadata.nested[0].cardNumber").value("4111111111111111"));
+
+        mockMvc.perform(get("/audit/events/redacted")
+                        .param("resourceId", "acct-200"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].payload.email").value("[REDACTED]"))
+                .andExpect(jsonPath("$.content[0].payload.reason").value("regulatory-review"))
+                .andExpect(jsonPath("$.content[0].payload.metadata.password").value("[REDACTED]"))
+                .andExpect(jsonPath("$.content[0].payload.metadata.nested[0].cardNumber").value("[REDACTED]"));
+
+        mockMvc.perform(get("/audit/verify"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isValid").value(true))
+                .andExpect(jsonPath("$.violationType").value("NONE"));
+    }
+
+    @Test
     void rejectsNonObjectPayloads() throws Exception {
         mockMvc.perform(post("/audit/events")
                         .contentType(MediaType.APPLICATION_JSON)
