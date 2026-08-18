@@ -165,3 +165,10 @@ This project was intentionally built to align with the engineering plan in `task
     - Upgrade the bare SHA-256 hash to use an HMAC-SHA256 (keyed hashing) using an externalized secret property so that raw database write access alone cannot forge a valid chain.
     
     )
+
+- Concurrency & Transactional Write Control    
+    (Prompt: 
+    Act as a senior Spring Boot 3.5.0 and Java 17 security and backend architect. We need to refactor our tamper-evident Audit Log Service to resolve critical security, concurrency, and hash-chain vulnerabilities identified in our evaluation audit:
+    - Update `AuditEventService.append()` to ensure thread-safe, sequential appending. Implement pessimistic locking (e.g., `@Lock(LockModeType.PESSIMISTIC_WRITE)` or database-level serializable isolation / unique constraints on `previousHash`) on the chain head lookup so concurrent writes never fork the chain.
+    )
+

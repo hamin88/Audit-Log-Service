@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -32,12 +33,12 @@ public class AuditEventService {
         this.objectMapper = objectMapper;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public AuditEvent append(AuditEventRequest request) {
         UUID eventId = UUID.randomUUID();
         Instant timestamp = Instant.now().truncatedTo(ChronoUnit.MICROS);
         String payload = canonicalPayload(request);
-        String previousHash = auditEventRepository.findLatest()
+        String previousHash = auditEventRepository.findLatestForUpdate()
                 .map(AuditEvent::getCurrentHash)
                 .orElse(AuditHashService.GENESIS_HASH);
         String currentHash = auditHashService.currentHash(

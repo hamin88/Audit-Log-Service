@@ -1,5 +1,8 @@
 package com.example.auditlog;
 
+import com.example.auditlog.api.AuditEventRequest;
+import com.example.auditlog.domain.AuditEvent;
+import com.example.auditlog.service.AuditEventService;
 import com.example.auditlog.service.AuditHashService;
 import com.example.auditlog.service.AuditRetentionService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,7 +16,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -35,6 +47,9 @@ class AuditEventApiIntegrationTest {
 
     @Autowired
     private AuditRetentionService auditRetentionService;
+
+    @Autowired
+    private AuditEventService auditEventService;
 
     @Test
     void appendsEventsWithServerAssignedIdsTimestampsAndHashChain() throws Exception {
@@ -62,6 +77,46 @@ class AuditEventApiIntegrationTest {
         assertThat(first.get("previousHash").asText()).isEqualTo(AuditHashService.GENESIS_HASH);
         assertThat(first.get("currentHash").asText()).hasSize(64);
         assertThat(second.get("previousHash").asText()).isEqualTo(first.get("currentHash").asText());
+    }
+
+    @Test
+    void appendsConcurrentlyWithoutForkingTheHashChain() throws Exception {
+        int concurrentWrites = 8;
+        ExecutorService executor = Executors.newFixedThreadPool(concurrentWrites);
+        CountDownLatch ready = new CountDownLatch(concurrentWrites);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<AuditEvent>> futures = new ArrayList<>();
+
+        for (int i = 0; i < concurrentWrites; i++) {
+            final int index = i;
+            futures.add(executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return auditEventService.append(new AuditEventRequest(
+                        "CONCURRENT_WRITE_" + index,
+                        "actor-" + index,
+                        "RESOURCE",
+                        "resource-" + index,
+                        objectMapper.readTree("{\"iteration\":" + index + "}")
+                ));
+            }));
+        }
+
+        ready.await();
+        start.countDown();
+
+        List<AuditEvent> events = new ArrayList<>();
+        for (Future<AuditEvent> future : futures) {
+            events.add(future.get());
+        }
+        executor.shutdown();
+
+        Set<String> previousHashes = events.stream()
+                .map(AuditEvent::getPreviousHash)
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertThat(events).hasSize(concurrentWrites);
+        assertThat(previousHashes).hasSize(concurrentWrites);
     }
 
     @Test
@@ -246,6 +301,7 @@ class AuditEventApiIntegrationTest {
 
     private JsonNode postEvent(String requestBody) throws Exception {
         String response = mockMvc.perform(post("/audit/events")
+                        .with(httpBasic("audit-admin", "audit-admin-pass"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())

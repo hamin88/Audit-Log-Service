@@ -36,7 +36,7 @@ public class AuditEvent {
     @Column(nullable = false, updatable = false, columnDefinition = "clob")
     private String payload;
 
-    @Column(nullable = false, updatable = false, length = 64)
+    @Column(name = "previous_hash", nullable = false, updatable = false, length = 64)
     private String previousHash;
 
     @Column(nullable = false, updatable = false, length = 64)

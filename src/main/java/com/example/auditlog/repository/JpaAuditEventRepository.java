@@ -3,6 +3,7 @@ package com.example.auditlog.repository;
 import com.example.auditlog.domain.AuditEvent;
 import com.example.auditlog.domain.AuditEventStatus;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.TypedQuery;
 import org.springframework.data.domain.Page;
@@ -33,6 +34,18 @@ class JpaAuditEventRepository implements AuditEventRepository {
                         "select e from AuditEvent e order by e.timestamp desc, e.eventId desc",
                         AuditEvent.class
                 )
+                .setMaxResults(1)
+                .getResultStream()
+                .findFirst();
+    }
+
+    @Override
+    public Optional<AuditEvent> findLatestForUpdate() {
+        return entityManager.createQuery(
+                        "select e from AuditEvent e order by e.timestamp desc, e.eventId desc",
+                        AuditEvent.class
+                )
+                .setLockMode(LockModeType.PESSIMISTIC_WRITE)
                 .setMaxResults(1)
                 .getResultStream()
                 .findFirst();
