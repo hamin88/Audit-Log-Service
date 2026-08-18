@@ -1,0 +1,16 @@
+package com.example.auditlog.repository;
+
+import com.example.auditlog.domain.AuditEvent;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+import java.util.Optional;
+
+public interface AuditEventRepository {
+
+    AuditEvent append(AuditEvent auditEvent);
+
+    Optional<AuditEvent> findLatest();
+
+    Page<AuditEvent> search(AuditEventSearchCriteria criteria, Pageable pageable);
+}
