@@ -2,6 +2,8 @@ package com.example.auditlog.service;
 
 import com.example.auditlog.domain.AuditEvent;
 import com.example.auditlog.repository.AuditEventRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -9,6 +11,8 @@ import java.util.List;
 
 @Service
 public class AuditVerificationService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuditVerificationService.class);
 
     private final AuditEventRepository auditEventRepository;
     private final AuditHashService auditHashService;
@@ -23,11 +27,14 @@ public class AuditVerificationService {
 
     @Transactional(readOnly = true)
     public AuditVerificationResult verify() {
+        log.info("Starting full audit-chain verification");
         List<AuditEvent> events = auditEventRepository.findAllChronological();
         String expectedPreviousHash = AuditHashService.GENESIS_HASH;
 
         for (AuditEvent event : events) {
             if (!expectedPreviousHash.equals(event.getPreviousHash())) {
+                log.warn("Tamper detection: previousHash mismatch eventId={} expectedPreviousHash={} actualPreviousHash={}",
+                        event.getEventId(), expectedPreviousHash, event.getPreviousHash());
                 return AuditVerificationResult.broken(
                         event.getEventId(),
                         AuditViolationType.PREVIOUS_HASH_MISMATCH,
@@ -47,6 +54,8 @@ public class AuditVerificationService {
                     event.getPreviousHash()
             );
             if (!recalculatedHash.equals(event.getCurrentHash())) {
+                log.warn("Tamper detection: currentHash mismatch eventId={} recalculatedHash={} storedHash={}",
+                        event.getEventId(), recalculatedHash, event.getCurrentHash());
                 return AuditVerificationResult.broken(
                         event.getEventId(),
                         AuditViolationType.HASH_MISMATCH,
@@ -58,6 +67,7 @@ public class AuditVerificationService {
             expectedPreviousHash = event.getCurrentHash();
         }
 
+        log.info("Audit-chain verification complete valid=true checkedRecords={}", events.size());
         return AuditVerificationResult.valid(events.size());
     }
 }

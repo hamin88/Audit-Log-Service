@@ -8,6 +8,8 @@ import com.example.auditlog.domain.AuditEvent;
 import com.example.auditlog.repository.AuditEventRepository;
 import com.example.auditlog.repository.AuditExportCriteria;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
@@ -21,6 +23,8 @@ import java.util.List;
 
 @Service
 public class AuditExportService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuditExportService.class);
 
     private static final int EXPORT_PAGE_SIZE = 500;
     private static final String HASH_FORMULA =
@@ -43,6 +47,7 @@ public class AuditExportService {
     @Transactional(readOnly = true)
     public AuditExportBundleResponse export(AuditExportCriteria criteria) {
         validate(criteria);
+        log.info("Starting audit export actorId={} resourceId={} from={} to={}", criteria.actorId(), criteria.resourceId(), criteria.from(), criteria.to());
 
         Instant exportedAt = Instant.now();
         List<AuditEvent> exportedEvents = new ArrayList<>();
@@ -71,6 +76,10 @@ public class AuditExportService {
 
         String exportRootHash = auditHashService.sha256Hex(rootHashInput.toString());
         boolean subsetLinksToLedger = verifySubsetLinksToLedger(exportedEvents);
+        if (!subsetLinksToLedger) {
+            log.warn("Export subset failed ledger linkage validation actorId={} resourceId={} recordCount={}",
+                    criteria.actorId(), criteria.resourceId(), exportedEvents.size());
+        }
         AuditExportMetadataResponse metadata = new AuditExportMetadataResponse(
                 exportedAt,
                 totalRecordCount,

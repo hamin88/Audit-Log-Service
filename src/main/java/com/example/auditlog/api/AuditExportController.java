@@ -2,6 +2,8 @@ package com.example.auditlog.api;
 
 import com.example.auditlog.repository.AuditExportCriteria;
 import com.example.auditlog.service.AuditExportService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -19,6 +21,8 @@ import java.time.Instant;
 @RequestMapping("/audit")
 public class AuditExportController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuditExportController.class);
+
     private final AuditExportService auditExportService;
 
     public AuditExportController(AuditExportService auditExportService) {
@@ -33,6 +37,7 @@ public class AuditExportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
     ) {
+        log.info("Exporting audit subset actorId={} resourceId={} from={} to={}", actorId, resourceId, from, to);
         AuditExportBundleResponse bundle = auditExportService.export(
                 new AuditExportCriteria(actorId, resourceId, from, to)
         );

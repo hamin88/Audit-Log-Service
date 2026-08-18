@@ -6,18 +6,24 @@ import com.example.auditlog.repository.AuditEventRepository;
 import com.example.auditlog.repository.AuditEventSearchCriteria;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 public class AuditEventService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuditEventService.class);
+    private static final ReentrantLock APPEND_LOCK = new ReentrantLock();
+    private static final AtomicLong LAST_TIMESTAMP_MILLIS = new AtomicLong(System.currentTimeMillis());
 
     private final AuditEventRepository auditEventRepository;
     private final AuditHashService auditHashService;
@@ -33,36 +39,54 @@ public class AuditEventService {
         this.objectMapper = objectMapper;
     }
 
-    @Transactional(isolation = Isolation.SERIALIZABLE)
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.SERIALIZABLE)
     public AuditEvent append(AuditEventRequest request) {
-        UUID eventId = UUID.randomUUID();
-        Instant timestamp = Instant.now().truncatedTo(ChronoUnit.MICROS);
-        String payload = canonicalPayload(request);
-        String previousHash = auditEventRepository.findLatestForUpdate()
-                .map(AuditEvent::getCurrentHash)
-                .orElse(AuditHashService.GENESIS_HASH);
-        String currentHash = auditHashService.currentHash(
-                eventId,
-                timestamp,
-                request.eventType(),
-                request.actorId(),
-                request.resourceType(),
-                request.resourceId(),
-                payload,
-                previousHash
-        );
+        APPEND_LOCK.lock();
+        try {
+            UUID eventId = UUID.randomUUID();
+            Instant timestamp = nextMonotonicTimestamp();
+            String payload = canonicalPayload(request);
+            log.info("Preparing append eventId={} eventType={} actorId={} resourceId={} timestamp={}", eventId, request.eventType(), request.actorId(), request.resourceId(), timestamp);
 
-        return auditEventRepository.append(new AuditEvent(
-                eventId,
-                timestamp,
-                request.eventType(),
-                request.actorId(),
-                request.resourceType(),
-                request.resourceId(),
-                payload,
-                previousHash,
-                currentHash
-        ));
+            String previousHash = auditEventRepository.findLatestForUpdate()
+                    .map(AuditEvent::getCurrentHash)
+                    .orElse(AuditHashService.GENESIS_HASH);
+
+            String currentHash = auditHashService.currentHash(
+                    eventId,
+                    timestamp,
+                    request.eventType(),
+                    request.actorId(),
+                    request.resourceType(),
+                    request.resourceId(),
+                    payload,
+                    previousHash
+            );
+
+            AuditEvent event = new AuditEvent(
+                    eventId,
+                    timestamp,
+                    request.eventType(),
+                    request.actorId(),
+                    request.resourceType(),
+                    request.resourceId(),
+                    payload,
+                    previousHash,
+                    currentHash
+            );
+            AuditEvent persisted = auditEventRepository.append(event);
+
+            log.info("Audit event appended eventId={} previousHash={} currentHash={}", eventId, previousHash, currentHash);
+            return persisted;
+        } finally {
+            APPEND_LOCK.unlock();
+        }
+    }
+
+    private Instant nextMonotonicTimestamp() {
+        long nowMillis = System.currentTimeMillis();
+        long next = LAST_TIMESTAMP_MILLIS.updateAndGet(current -> Math.max(current + 1L, nowMillis));
+        return Instant.ofEpochMilli(next);
     }
 
     @Transactional(readOnly = true)

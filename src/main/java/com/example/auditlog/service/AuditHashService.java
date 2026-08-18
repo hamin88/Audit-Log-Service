@@ -1,5 +1,7 @@
 package com.example.auditlog.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +16,8 @@ import java.util.UUID;
 
 @Component
 public class AuditHashService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuditHashService.class);
 
     public static final String GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
     private static final String HMAC_ALGORITHM = "HmacSHA256";
@@ -47,7 +51,9 @@ public class AuditHashService {
                 payload,
                 previousHash
         );
-        return hmacSha256Hex(canonicalInput);
+        String hash = hmacSha256Hex(canonicalInput);
+        log.debug("Computed hash for eventId={} previousHash={} hash={}", eventId, previousHash, hash);
+        return hash;
     }
 
     public String sha256Hex(String input) {

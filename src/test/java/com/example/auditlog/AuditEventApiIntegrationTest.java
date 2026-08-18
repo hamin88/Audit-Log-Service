@@ -132,6 +132,7 @@ class AuditEventApiIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/events")
+                        .with(httpBasic("audit-reader", "audit-reader-pass"))
                         .param("actorId", "admin-1")
                         .param("resourceType", "DOCUMENT")
                         .param("eventType", "PERMISSION_GRANTED")
@@ -163,6 +164,7 @@ class AuditEventApiIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/events")
+                        .with(httpBasic("audit-reader", "audit-reader-pass"))
                         .param("resourceId", "acct-200"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].payload.email").value("client@example.com"))
@@ -170,6 +172,7 @@ class AuditEventApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].payload.metadata.nested[0].cardNumber").value("4111111111111111"));
 
         mockMvc.perform(get("/audit/events/redacted")
+                        .with(httpBasic("audit-reader", "audit-reader-pass"))
                         .param("resourceId", "acct-200"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].payload.email").value("[REDACTED]"))
@@ -204,6 +207,7 @@ class AuditEventApiIntegrationTest {
     @Test
     void rejectsInvalidTimeRange() throws Exception {
         mockMvc.perform(get("/audit/events")
+                        .with(httpBasic("audit-reader", "audit-reader-pass"))
                         .param("from", "2026-08-18T12:00:00Z")
                         .param("to", "2026-08-18T11:00:00Z"))
                 .andExpect(status().isBadRequest());
@@ -221,7 +225,8 @@ class AuditEventApiIntegrationTest {
                 }
                 """);
 
-        mockMvc.perform(get("/audit/verify"))
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-admin", "audit-admin-pass")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(true))
                 .andExpect(jsonPath("$.brokenAtEventId").doesNotExist())
@@ -243,7 +248,8 @@ class AuditEventApiIntegrationTest {
         String replacement = "1111111111111111111111111111111111111111111111111111111111111111";
         jdbcTemplate.update("update audit_events set previous_hash = ?", replacement);
 
-        mockMvc.perform(get("/audit/verify"))
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-admin", "audit-admin-pass")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").isNotEmpty())
@@ -264,7 +270,8 @@ class AuditEventApiIntegrationTest {
 
         jdbcTemplate.update("update audit_events set payload = ?", "{\"reason\":\"altered\"}");
 
-        mockMvc.perform(get("/audit/verify"))
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-admin", "audit-admin-pass")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").isNotEmpty())
@@ -286,6 +293,7 @@ class AuditEventApiIntegrationTest {
         assertThat(auditRetentionService.archiveExpiredEvents()).isEqualTo(1);
 
         mockMvc.perform(get("/audit/events")
+                        .with(httpBasic("audit-reader", "audit-reader-pass"))
                         .param("resourceId", "acct-100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].eventId").value(event.get("eventId").asText()))

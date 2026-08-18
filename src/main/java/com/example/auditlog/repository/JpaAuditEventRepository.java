@@ -2,6 +2,7 @@ package com.example.auditlog.repository;
 
 import com.example.auditlog.domain.AuditEvent;
 import com.example.auditlog.domain.AuditEventStatus;
+import com.example.auditlog.domain.LedgerHead;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
@@ -15,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 class JpaAuditEventRepository implements AuditEventRepository {
@@ -179,6 +181,20 @@ class JpaAuditEventRepository implements AuditEventRepository {
             predicates.add("e." + field + " = :" + field);
             parameters.add(new Parameter(field, value));
         }
+    }
+
+    @Override
+    public LedgerHead getLedgerHead() {
+        LedgerHead head = entityManager.find(LedgerHead.class, "HEAD");
+        if (head == null) {
+            throw new IllegalStateException("Ledger head singleton not initialized. Ensure DataInitializer has run.");
+        }
+        return head;
+    }
+
+    @Override
+    public void updateLedgerHead(LedgerHead ledgerHead) {
+        entityManager.merge(ledgerHead);
     }
 
     private record QueryParts(String whereClause, List<Parameter> parameters) {

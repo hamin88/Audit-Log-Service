@@ -87,6 +87,7 @@ class AuditLogServiceQaIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/events")
+                        .with(httpBasic("audit-reader", "audit-reader-pass"))
                         .param("actorId", "operator-1")
                         .param("resourceType", "CLIENT_ACCOUNT")
                         .param("page", "0")
@@ -125,7 +126,8 @@ class AuditLogServiceQaIntegrationTest {
                 secondEventId
         );
 
-        mockMvc.perform(get("/audit/verify"))
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-admin", "audit-admin-pass")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").value(secondEventId.toString()))
@@ -151,7 +153,8 @@ class AuditLogServiceQaIntegrationTest {
                 firstEventId
         );
 
-        mockMvc.perform(get("/audit/verify"))
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-admin", "audit-admin-pass")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").value(firstEventId.toString()))
@@ -189,6 +192,7 @@ class AuditLogServiceQaIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/export")
+                        .with(httpBasic("audit-exporter", "audit-exporter-pass"))
                         .param("resourceId", "acct-qa-5")
                         .param("page", "0")
                         .param("size", "20"))

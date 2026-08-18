@@ -6,7 +6,8 @@ public record AuditVerificationResult(
         boolean valid,
         UUID brokenAtEventId,
         AuditViolationType violationType,
-        String message
+        String message,
+        int checkedRecords
 ) {
 
     public static AuditVerificationResult valid(int checkedRecords) {
@@ -14,7 +15,8 @@ public record AuditVerificationResult(
                 true,
                 null,
                 AuditViolationType.NONE,
-                "Audit hash chain is valid across " + checkedRecords + " record(s)."
+                "Audit hash chain is valid across " + checkedRecords + " record(s).",
+                checkedRecords
         );
     }
 
@@ -23,6 +25,6 @@ public record AuditVerificationResult(
             AuditViolationType violationType,
             String message
     ) {
-        return new AuditVerificationResult(false, brokenAtEventId, violationType, message);
+        return new AuditVerificationResult(false, brokenAtEventId, violationType, message, 0);
     }
 }

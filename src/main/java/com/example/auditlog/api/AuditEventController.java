@@ -8,6 +8,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -28,6 +30,8 @@ import java.time.Instant;
 @RequestMapping("/audit/events")
 public class AuditEventController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuditEventController.class);
+
     private final AuditEventService auditEventService;
     private final AuditPayloadRedactionService redactionService;
     private final ObjectMapper objectMapper;
@@ -46,7 +50,10 @@ public class AuditEventController {
     @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
     public AuditEventResponse append(@Valid @RequestBody AuditEventRequest request) {
-        return toResponse(auditEventService.append(request));
+        log.info("Appending audit event eventType={} actorId={} resourceId={}", request.eventType(), request.actorId(), request.resourceId());
+        AuditEventResponse response = toResponse(auditEventService.append(request));
+        log.debug("Audit event appended eventId={} currentHash={}", response.eventId(), response.currentHash());
+        return response;
     }
 
     @GetMapping
@@ -60,6 +67,8 @@ public class AuditEventController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @PageableDefault(size = 20) Pageable pageable
     ) {
+        log.info("Querying audit events actorId={} resourceType={} resourceId={} eventType={} from={} to={}",
+                actorId, resourceType, resourceId, eventType, from, to);
         AuditEventSearchCriteria criteria = new AuditEventSearchCriteria(
                 actorId,
                 resourceType,
@@ -82,6 +91,8 @@ public class AuditEventController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @PageableDefault(size = 20) Pageable pageable
     ) {
+        log.info("Querying redacted audit events actorId={} resourceType={} resourceId={} eventType={} from={} to={}",
+                actorId, resourceType, resourceId, eventType, from, to);
         AuditEventSearchCriteria criteria = new AuditEventSearchCriteria(
                 actorId,
                 resourceType,
