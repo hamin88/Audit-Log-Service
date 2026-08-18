@@ -172,3 +172,11 @@ This project was intentionally built to align with the engineering plan in `task
     - Update `AuditEventService.append()` to ensure thread-safe, sequential appending. Implement pessimistic locking (e.g., `@Lock(LockModeType.PESSIMISTIC_WRITE)` or database-level serializable isolation / unique constraints on `previousHash`) on the chain head lookup so concurrent writes never fork the chain.
     )
 
+- Verifiable Export & Streaming
+    (Prompt: 
+        Act as a senior Spring Boot 3.5.0 and Java 17 security and backend architect. We need to refactor our tamper-evident Audit Log Service to resolve critical security, concurrency, and hash-chain vulnerabilities identified in our evaluation audit:
+
+        - Refactor `AuditExportService` to replace the dummy `!records.isEmpty()` check with a real cryptographic verification check ensuring the exported subset correctly links back to the ledger hash chain.
+        - Implement Java 17 streaming or pagination for exports to prevent memory exhaustion on large datasets.
+    )
+

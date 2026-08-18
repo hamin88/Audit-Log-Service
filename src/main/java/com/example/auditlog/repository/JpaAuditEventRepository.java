@@ -52,6 +52,18 @@ class JpaAuditEventRepository implements AuditEventRepository {
     }
 
     @Override
+    public Optional<AuditEvent> findPreviousEventBefore(Instant cutoff) {
+        return entityManager.createQuery(
+                        "select e from AuditEvent e where e.timestamp < :cutoff order by e.timestamp desc, e.eventId desc",
+                        AuditEvent.class
+                )
+                .setParameter("cutoff", cutoff)
+                .setMaxResults(1)
+                .getResultStream()
+                .findFirst();
+    }
+
+    @Override
     public List<AuditEvent> findAllChronological() {
         return entityManager.createQuery(
                         "select e from AuditEvent e order by e.timestamp asc, e.eventId asc",

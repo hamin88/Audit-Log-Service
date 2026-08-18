@@ -45,20 +45,24 @@ public class AuditExportService {
         validate(criteria);
 
         Instant exportedAt = Instant.now();
+        List<AuditEvent> exportedEvents = new ArrayList<>();
         List<AuditExportRecordResponse> records = new ArrayList<>();
         StringBuilder rootHashInput = new StringBuilder();
         String firstPreviousHash = null;
         String lastCurrentHash = null;
+        long totalRecordCount = 0L;
 
         int pageNumber = 0;
         Page<AuditEvent> page;
         do {
             page = auditEventRepository.export(criteria, PageRequest.of(pageNumber, EXPORT_PAGE_SIZE));
-            for (AuditEvent event : page.getContent()) {
+            totalRecordCount = page.getTotalElements();
+            for (AuditEvent event : page.getContent().stream().toList()) {
                 if (firstPreviousHash == null) {
                     firstPreviousHash = event.getPreviousHash();
                 }
                 lastCurrentHash = event.getCurrentHash();
+                exportedEvents.add(event);
                 appendRootHashInput(rootHashInput, event);
                 records.add(AuditExportRecordResponse.from(event, parsePayload(event)));
             }
@@ -66,18 +70,53 @@ public class AuditExportService {
         } while (page.hasNext());
 
         String exportRootHash = auditHashService.sha256Hex(rootHashInput.toString());
+        boolean subsetLinksToLedger = verifySubsetLinksToLedger(exportedEvents);
         AuditExportMetadataResponse metadata = new AuditExportMetadataResponse(
                 exportedAt,
-                page == null ? 0 : page.getTotalElements(),
+                totalRecordCount,
                 new AuditExportFilterResponse(criteria.actorId(), criteria.resourceId(), criteria.from(), criteria.to()),
                 exportRootHash,
                 firstPreviousHash,
                 lastCurrentHash,
-                !records.isEmpty(),
+                subsetLinksToLedger,
                 "HMAC-SHA256",
                 HASH_FORMULA
         );
         return new AuditExportBundleResponse(metadata, records);
+    }
+
+    private boolean verifySubsetLinksToLedger(List<AuditEvent> exportedEvents) {
+        if (exportedEvents.isEmpty()) {
+            return false;
+        }
+
+        AuditEvent firstEvent = exportedEvents.get(0);
+        String expectedPreviousHash = auditEventRepository.findPreviousEventBefore(firstEvent.getTimestamp())
+                .map(AuditEvent::getCurrentHash)
+                .orElse(AuditHashService.GENESIS_HASH);
+
+        for (AuditEvent event : exportedEvents) {
+            if (!expectedPreviousHash.equals(event.getPreviousHash())) {
+                return false;
+            }
+
+            String recalculatedHash = auditHashService.currentHash(
+                    event.getEventId(),
+                    event.getTimestamp(),
+                    event.getEventType(),
+                    event.getActorId(),
+                    event.getResourceType(),
+                    event.getResourceId(),
+                    event.getPayload(),
+                    event.getPreviousHash()
+            );
+            if (!recalculatedHash.equals(event.getCurrentHash())) {
+                return false;
+            }
+            expectedPreviousHash = event.getCurrentHash();
+        }
+
+        return true;
     }
 
     private void validate(AuditExportCriteria criteria) {

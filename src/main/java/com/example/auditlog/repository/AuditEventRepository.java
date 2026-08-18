@@ -18,6 +18,8 @@ public interface AuditEventRepository {
     @jakarta.persistence.Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<AuditEvent> findLatestForUpdate();
 
+    Optional<AuditEvent> findPreviousEventBefore(Instant cutoff);
+
     List<AuditEvent> findAllChronological();
 
     int archiveOlderThan(Instant cutoff, Instant archivedAt);
