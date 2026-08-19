@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: auditlog-postgres
+    environment:
+      POSTGRES_DB: auditlog
+      POSTGRES_USER: auditlog
+      POSTGRES_PASSWORD: auditlog
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auditlog -d auditlog"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: auditlog-keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8081
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8081:8081"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+
+volumes:
+  postgres_data:
+  keycloak_data:

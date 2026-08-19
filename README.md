@@ -33,9 +33,15 @@ Here is a comprehensive summary of your progress across all phases of the **Tamp
 
 ---
 
-## 5. Security Secret
+## 5. Runtime Stack
 
-The hash chain uses an HMAC secret loaded from `AUDIT_HASH_SECRET`. The application now fails fast on startup if that value is blank, too weak, or still set to the default placeholder.
+The service now runs against PostgreSQL and Keycloak through Docker Compose. Start the support stack with:
+
+```bash
+docker compose up -d postgres keycloak
+```
+
+The hash chain still uses an HMAC secret loaded from `AUDIT_HASH_SECRET`. The application fails fast on startup if that value is blank, too weak, or still set to the default placeholder.
 
 Set it before starting the service:
 

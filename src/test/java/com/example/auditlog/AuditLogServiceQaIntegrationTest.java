@@ -16,7 +16,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.core.authority.AuthorityUtils.createAuthorityList;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -88,7 +89,7 @@ class AuditLogServiceQaIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/events")
-                        .with(httpBasic("audit-reader", "audit-reader-pass"))
+                        .with(readerJwt())
                         .param("actorId", "operator-1")
                         .param("resourceType", "CLIENT_ACCOUNT")
                         .param("page", "0")
@@ -112,23 +113,55 @@ class AuditLogServiceQaIntegrationTest {
                                   "payload": {"reason": "compliance-review"}
                                 }
                                 """))
-                .andExpect(status().isUnauthorized())
-                .andExpect(header().string("WWW-Authenticate", "Basic realm=\"Realm\""));
+                .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/audit/events")
-                        .with(httpBasic("audit-exporter", "audit-exporter-pass")))
+                        .with(exporterJwt()))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/audit/export")
-                        .with(httpBasic("audit-reader", "audit-reader-pass")))
+                        .with(readerJwt()))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-reader", "audit-reader-pass")))
+                        .with(readerJwt()))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(options("/audit/export"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void writeApi_rejectsDuplicateIdempotencyKeysWithDifferentBodies() throws Exception {
+        mockMvc.perform(post("/audit/events")
+                        .with(adminJwt())
+                        .header("Idempotency-Key", "replay-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "eventType": "RECORD_READ",
+                                  "actorId": "auditor-qa",
+                                  "resourceType": "CLIENT_ACCOUNT",
+                                  "resourceId": "acct-qa-dup",
+                                  "payload": {"reason": "first"}
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/audit/events")
+                        .with(adminJwt())
+                        .header("Idempotency-Key", "replay-key-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "eventType": "RECORD_READ",
+                                  "actorId": "auditor-qa",
+                                  "resourceType": "CLIENT_ACCOUNT",
+                                  "resourceId": "acct-qa-dup",
+                                  "payload": {"reason": "second"}
+                                }
+                                """))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -160,7 +193,7 @@ class AuditLogServiceQaIntegrationTest {
         );
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-admin", "audit-admin-pass")))
+                        .with(adminJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").value(secondEventId.toString()))
@@ -187,7 +220,7 @@ class AuditLogServiceQaIntegrationTest {
         );
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-admin", "audit-admin-pass")))
+                        .with(adminJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").value(firstEventId.toString()))
@@ -225,7 +258,7 @@ class AuditLogServiceQaIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/export")
-                        .with(httpBasic("audit-exporter", "audit-exporter-pass"))
+                        .with(exporterJwt())
                         .param("resourceId", "acct-qa-5")
                         .param("page", "0")
                         .param("size", "20"))
@@ -251,7 +284,7 @@ class AuditLogServiceQaIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-admin", "audit-admin-pass")))
+                        .with(adminJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(true))
                 .andExpect(jsonPath("$.violationType").value("NONE"));
@@ -259,7 +292,7 @@ class AuditLogServiceQaIntegrationTest {
 
     private JsonNode postEvent(String requestBody) throws Exception {
         String response = mockMvc.perform(post("/audit/events")
-                        .with(httpBasic("audit-admin", "audit-admin-pass"))
+                        .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
@@ -267,5 +300,17 @@ class AuditLogServiceQaIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         return objectMapper.readTree(response);
+    }
+
+    private org.springframework.test.web.servlet.request.RequestPostProcessor adminJwt() {
+        return jwt().authorities(createAuthorityList("ROLE_ADMIN"));
+    }
+
+    private org.springframework.test.web.servlet.request.RequestPostProcessor readerJwt() {
+        return jwt().authorities(createAuthorityList("ROLE_READER"));
+    }
+
+    private org.springframework.test.web.servlet.request.RequestPostProcessor exporterJwt() {
+        return jwt().authorities(createAuthorityList("ROLE_EXPORTER"));
     }
 }

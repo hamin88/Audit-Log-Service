@@ -15,22 +15,24 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
-import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.AccessDeniedHandler;
-import org.springframework.security.web.authentication.www.BasicAuthenticationEntryPoint;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Configuration
 @EnableWebSecurity
@@ -38,43 +40,65 @@ import java.util.UUID;
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+    private final AuditApiProperties auditApiProperties;
+
+    public SecurityConfig(AuditApiProperties auditApiProperties) {
+        this.auditApiProperties = auditApiProperties;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/audit/events").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/audit/events", "/audit/events/redacted").hasAnyRole("ADMIN", "READER")
+                        .requestMatchers(HttpMethod.GET, "/audit/export").hasRole("EXPORTER")
+                        .requestMatchers(HttpMethod.GET, "/audit/verify").hasAnyRole("ADMIN", "EXPORTER")
                         .anyRequest().authenticated())
-                .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint(authenticationEntryPoint())
-                        .accessDeniedHandler(accessDeniedHandler()))
-                .httpBasic(Customizer.withDefaults())
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
         http.addFilterBefore(correlationIdFilter(), SecurityContextHolderFilter.class);
+        http.addFilterBefore(auditRequestGuardFilter(), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
     @Bean
-    public AuthenticationEntryPoint authenticationEntryPoint() {
-        BasicAuthenticationEntryPoint entryPoint = new BasicAuthenticationEntryPoint();
-        entryPoint.setRealmName("Realm");
-        return (request, response, authException) -> {
-            log.warn("Security event: authentication failed uri={} method={} userAgent={} message={}",
-                    request.getRequestURI(), request.getMethod(), request.getHeader("User-Agent"), authException.getMessage());
-            response.addHeader("WWW-Authenticate", "Basic realm=\"Realm\"");
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
-        };
+    public AuditRequestGuardFilter auditRequestGuardFilter() {
+        return new AuditRequestGuardFilter(auditApiProperties);
     }
 
     @Bean
-    public AccessDeniedHandler accessDeniedHandler() {
-        return (request, response, accessDeniedException) -> {
-            log.warn("Security event: authorization denied uri={} method={} principal={} message={}",
-                    request.getRequestURI(), request.getMethod(), request.getUserPrincipal(), accessDeniedException.getMessage());
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Forbidden");
-        };
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID"));
+        configuration.setExposedHeaders(List.of("X-Correlation-ID", "Content-Disposition"));
+        configuration.setAllowCredentials(false);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter scopesConverter = new JwtGrantedAuthoritiesConverter();
+        scopesConverter.setAuthorityPrefix("SCOPE_");
+
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            Set<GrantedAuthority> authorities = new java.util.HashSet<>();
+            authorities.addAll(scopesConverter.convert(jwt));
+            authorities.addAll(extractRealmRoles(jwt));
+            authorities.addAll(extractResourceRoles(jwt));
+            return authorities;
+        });
+        return converter;
     }
 
     @Bean
@@ -98,28 +122,40 @@ public class SecurityConfig {
         };
     }
 
-    @Bean
-    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
-        UserDetails admin = User.withUsername("audit-admin")
-                .password(passwordEncoder.encode("audit-admin-pass"))
-                .roles("ADMIN")
-                .build();
-
-        UserDetails reader = User.withUsername("audit-reader")
-                .password(passwordEncoder.encode("audit-reader-pass"))
-                .roles("READER")
-                .build();
-
-        UserDetails exporter = User.withUsername("audit-exporter")
-                .password(passwordEncoder.encode("audit-exporter-pass"))
-                .roles("EXPORTER")
-                .build();
-
-        return new InMemoryUserDetailsManager(admin, reader, exporter);
+    private Collection<GrantedAuthority> extractRealmRoles(Jwt jwt) {
+        Object realmAccess = jwt.getClaims().get("realm_access");
+        if (!(realmAccess instanceof Map<?, ?> realmAccessMap)) {
+            return List.of();
+        }
+        Object roles = realmAccessMap.get("roles");
+        if (!(roles instanceof Collection<?> roleCollection)) {
+            return List.of();
+        }
+        return roleCollection.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .map(role -> (GrantedAuthority) () -> "ROLE_" + role.toUpperCase())
+                .collect(Collectors.toSet());
     }
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+    private Collection<GrantedAuthority> extractResourceRoles(Jwt jwt) {
+        Object resourceAccess = jwt.getClaims().get("resource_access");
+        if (!(resourceAccess instanceof Map<?, ?> resourceAccessMap)) {
+            return List.of();
+        }
+        return resourceAccessMap.values().stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .flatMap(client -> {
+                    Object roles = client.get("roles");
+                    if (!(roles instanceof Collection<?> roleCollection)) {
+                        return java.util.stream.Stream.<String>empty();
+                    }
+                    return roleCollection.stream()
+                            .filter(String.class::isInstance)
+                            .map(String.class::cast);
+                })
+                .map(role -> (GrantedAuthority) () -> "ROLE_" + role.toUpperCase())
+                .collect(Collectors.toSet());
     }
 }

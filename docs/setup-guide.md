@@ -2,7 +2,7 @@
 
 This guide explains how to build, run, test, and verify the tamper-evident Audit Log Service locally using Java 17 and Spring Boot 3.5.0.
 
-> This project is designed for local development and validation. The default configuration uses an in-memory H2 database for fast testing, while PostgreSQL can be used for closer-to-production validation.
+> This project is designed for local development and validation. The default runtime now uses PostgreSQL and Keycloak through Docker Compose so the local environment matches the production-style security stack more closely.
 
 ---
 
@@ -24,21 +24,20 @@ This guide explains how to build, run, test, and verify the tamper-evident Audit
 
 ### Default runtime assumptions
 
-The application currently ships with a default H2 configuration in `src/main/resources/application.yml`:
+The application now expects PostgreSQL for persistence and Keycloak as the OAuth 2.0 issuer. The defaults in `src/main/resources/application.yml` point to local Docker services:
 
 ```yaml
 spring:
   datasource:
-    url: jdbc:h2:mem:auditlog;MODE=PostgreSQL;DATABASE_TO_UPPER=false
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-  jpa:
-    hibernate:
-      ddl-auto: update
+    url: jdbc:postgresql://localhost:5432/auditlog
+    username: auditlog
+    password: auditlog
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8081/realms/audit-log
 ```
-
-This means the app can run immediately without external DB setup in local test mode.
 
 ### Environment variables and configuration
 
@@ -48,8 +47,8 @@ The application reads Spring Boot configuration properties from `application.yml
 
 ```bash
 export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/auditlog
-export SPRING_DATASOURCE_USERNAME=postgres
-export SPRING_DATASOURCE_PASSWORD=postgres
+export SPRING_DATASOURCE_USERNAME=auditlog
+export SPRING_DATASOURCE_PASSWORD=auditlog
 export SERVER_PORT=8080
 ```
 
@@ -68,67 +67,47 @@ export AUDIT_REDACTION_REPLACEMENT="[REDACTED]"
 
 #### Security / auth notes
 
-- No JWT or security layer is implemented in the current repository.
-- The service is intended to be run locally in a trusted environment and validated through HTTP calls.
-- If a secure deployment layer is added later, standard Spring Security/JWT configuration should be introduced outside this code path.
+- Authentication and authorization now use Keycloak-issued JWTs.
+- The service runs as a Spring Security OAuth 2.0 resource server and expects `AUDIT_HASH_SECRET` to be set to a strong value at startup.
+- Use the Docker Compose stack for local development so the application, PostgreSQL, and Keycloak stay aligned.
 
 ---
 
 ## 2. Local Build Instructions
 
-### Option A: Run with the default H2 database
+### Option A: Run with Docker Compose
 
 From the project root:
 
 ```bash
 cd Audit-Log-Service
+docker compose up -d postgres keycloak
+```
+
+Then start the service:
+
+```text
 mvn clean install
 mvn spring-boot:run
 ```
 
-The app will start on the default port:
+### Option B: Run without Docker Compose
 
-```text
-http://localhost:8080
-```
-
-### Option B: Run using PostgreSQL
-
-1. Create a local PostgreSQL database:
-
-```sql
-CREATE DATABASE auditlog;
-```
-
-2. Set the datasource environment variables:
+Set the datasource and Keycloak issuer variables to point at your own services:
 
 ```bash
 export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/auditlog
-export SPRING_DATASOURCE_USERNAME=postgres
-export SPRING_DATASOURCE_PASSWORD=postgres
-```
-
-3. Start the service:
-
-```bash
-mvn clean install
-mvn spring-boot:run
+export SPRING_DATASOURCE_USERNAME=auditlog
+export SPRING_DATASOURCE_PASSWORD=auditlog
+export SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://localhost:8081/realms/audit-log
 ```
 
 ### Windows PowerShell examples
 
 ```powershell
 cd C:\Users\Admin\Documents\Assignment\Audit-Log-Service
+docker compose up -d postgres keycloak
 mvn clean install
-mvn spring-boot:run
-```
-
-Or with environment variables:
-
-```powershell
-$env:SPRING_DATASOURCE_URL = "jdbc:postgresql://localhost:5432/auditlog"
-$env:SPRING_DATASOURCE_USERNAME = "postgres"
-$env:SPRING_DATASOURCE_PASSWORD = "postgres"
 mvn spring-boot:run
 ```
 
@@ -138,7 +117,7 @@ mvn spring-boot:run
 
 ### Schema initialization
 
-The project uses JPA with `ddl-auto: update`, so the application will initialize the schema on startup when using the embedded database or a supported relational database.
+The project uses JPA with `ddl-auto: update`, so the application will initialize the schema on startup against PostgreSQL.
 
 The database table is created as `audit_events` using the `AuditEvent` entity mapping.
 
@@ -178,6 +157,16 @@ curl -sS -X POST http://localhost:8080/audit/events \
 ```
 
 Expected result: HTTP `201 Created` with a JSON response containing the generated event metadata, including `eventId`, `timestamp`, `previousHash`, and `currentHash`.
+
+For authenticated calls, send a Bearer token from Keycloak. A typical `curl` flow is:
+
+```bash
+export TOKEN="eyJ..."
+curl -sS -X POST http://localhost:8080/audit/events \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{ ... }'
+```
 
 ### 4.2 Query audit events
 

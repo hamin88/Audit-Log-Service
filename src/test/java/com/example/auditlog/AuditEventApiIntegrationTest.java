@@ -25,7 +25,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.core.authority.AuthorityUtils.createAuthorityList;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -134,7 +135,7 @@ class AuditEventApiIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/events")
-                        .with(httpBasic("audit-reader", "audit-reader-pass"))
+                        .with(readerJwt())
                         .param("actorId", "admin-1")
                         .param("resourceType", "DOCUMENT")
                         .param("eventType", "PERMISSION_GRANTED")
@@ -166,7 +167,7 @@ class AuditEventApiIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/events")
-                        .with(httpBasic("audit-reader", "audit-reader-pass"))
+                        .with(readerJwt())
                         .param("resourceId", "acct-200"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].payload.email").value("client@example.com"))
@@ -174,7 +175,7 @@ class AuditEventApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].payload.metadata.nested[0].cardNumber").value("4111111111111111"));
 
         mockMvc.perform(get("/audit/events/redacted")
-                        .with(httpBasic("audit-reader", "audit-reader-pass"))
+                        .with(readerJwt())
                         .param("resourceId", "acct-200"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].payload.email").value("[REDACTED]"))
@@ -183,7 +184,7 @@ class AuditEventApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].payload.metadata.nested[0].cardNumber").value("[REDACTED]"));
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-admin", "audit-admin-pass")))
+                        .with(adminJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(true))
                 .andExpect(jsonPath("$.violationType").value("NONE"));
@@ -192,7 +193,7 @@ class AuditEventApiIntegrationTest {
     @Test
     void rejectsNonObjectPayloads() throws Exception {
         mockMvc.perform(post("/audit/events")
-                        .with(httpBasic("audit-admin", "audit-admin-pass"))
+                        .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -209,14 +210,13 @@ class AuditEventApiIntegrationTest {
     @Test
     void rejectsAnonymousRequestsWithBasicAuthChallenge() throws Exception {
         mockMvc.perform(get("/audit/events"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(header().string("WWW-Authenticate", "Basic realm=\"Realm\""));
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void deniesNonAdminWritesAndNonExporterVerification() throws Exception {
         mockMvc.perform(post("/audit/events")
-                        .with(httpBasic("audit-reader", "audit-reader-pass"))
+                        .with(readerJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -230,7 +230,7 @@ class AuditEventApiIntegrationTest {
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-reader", "audit-reader-pass")))
+                        .with(readerJwt()))
                 .andExpect(status().isForbidden());
     }
 
@@ -243,7 +243,7 @@ class AuditEventApiIntegrationTest {
     @Test
     void rejectsInvalidTimeRange() throws Exception {
         mockMvc.perform(get("/audit/events")
-                        .with(httpBasic("audit-reader", "audit-reader-pass"))
+                        .with(readerJwt())
                         .param("from", "2026-08-18T12:00:00Z")
                         .param("to", "2026-08-18T11:00:00Z"))
                 .andExpect(status().isBadRequest());
@@ -262,7 +262,7 @@ class AuditEventApiIntegrationTest {
                 """);
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-admin", "audit-admin-pass")))
+                        .with(adminJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(true))
                 .andExpect(jsonPath("$.brokenAtEventId").doesNotExist())
@@ -285,7 +285,7 @@ class AuditEventApiIntegrationTest {
         jdbcTemplate.update("update audit_events set previous_hash = ?", replacement);
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-admin", "audit-admin-pass")))
+                        .with(adminJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").isNotEmpty())
@@ -307,7 +307,7 @@ class AuditEventApiIntegrationTest {
         jdbcTemplate.update("update audit_events set payload = ?", "{\"reason\":\"altered\"}");
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-admin", "audit-admin-pass")))
+                        .with(adminJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(false))
                 .andExpect(jsonPath("$.brokenAtEventId").isNotEmpty())
@@ -329,7 +329,7 @@ class AuditEventApiIntegrationTest {
         assertThat(auditRetentionService.archiveExpiredEvents()).isEqualTo(1);
 
         mockMvc.perform(get("/audit/events")
-                        .with(httpBasic("audit-reader", "audit-reader-pass"))
+                        .with(readerJwt())
                         .param("resourceId", "acct-100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].eventId").value(event.get("eventId").asText()))
@@ -337,7 +337,7 @@ class AuditEventApiIntegrationTest {
                 .andExpect(jsonPath("$.content[0].archivedAt").isNotEmpty());
 
         mockMvc.perform(get("/audit/verify")
-                        .with(httpBasic("audit-admin", "audit-admin-pass")))
+                        .with(adminJwt()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isValid").value(true))
                 .andExpect(jsonPath("$.violationType").value("NONE"));
@@ -345,7 +345,7 @@ class AuditEventApiIntegrationTest {
 
     private JsonNode postEvent(String requestBody) throws Exception {
         String response = mockMvc.perform(post("/audit/events")
-                        .with(httpBasic("audit-admin", "audit-admin-pass"))
+                        .with(adminJwt())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
@@ -353,5 +353,13 @@ class AuditEventApiIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         return objectMapper.readTree(response);
+    }
+
+    private org.springframework.test.web.servlet.request.RequestPostProcessor adminJwt() {
+        return jwt().authorities(createAuthorityList("ROLE_ADMIN"));
+    }
+
+    private org.springframework.test.web.servlet.request.RequestPostProcessor readerJwt() {
+        return jwt().authorities(createAuthorityList("ROLE_READER"));
     }
 }
