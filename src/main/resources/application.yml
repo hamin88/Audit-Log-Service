@@ -15,6 +15,7 @@ spring:
 
 audit:
   hash:
+    # Required at startup. Set AUDIT_HASH_SECRET to a strong, non-default secret.
     secret: ${AUDIT_HASH_SECRET:change-me-in-production}
   retention:
     period: 365d

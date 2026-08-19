@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AuditHashServiceTest {
 
@@ -89,5 +90,24 @@ class AuditHashServiceTest {
                 payload,
                 AuditHashService.GENESIS_HASH
         )).isEqualTo(hashWithPrimarySecret);
+    }
+
+    @Test
+    void constructorRejectsBlankWeakAndDefaultSecrets() {
+        assertThatThrownBy(() -> new AuditHashService("   "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("AUDIT_HASH_SECRET must be set");
+
+        assertThatThrownBy(() -> new AuditHashService("change-me-in-production"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("default placeholder");
+
+        assertThatThrownBy(() -> new AuditHashService("short1A"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at least 16 characters");
+
+        assertThatThrownBy(() -> new AuditHashService("aaaaaaaaaaaaaaaa"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("two character classes");
     }
 }

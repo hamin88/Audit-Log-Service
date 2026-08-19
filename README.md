@@ -30,3 +30,18 @@ Here is a comprehensive summary of your progress across all phases of the **Tamp
 
 * **Automated Testing Strategy:** Outlined JUnit 5, Spring Boot Test, and Testcontainers integration test suites for all REST endpoints.
 * **Tamper Simulation Tests:** Validated robust tamper-evidence by designing automated test cases that simulate malicious database mutations and ensure verification endpoints instantly flag integrity breaches.
+
+---
+
+## 5. Security Secret
+
+The hash chain uses an HMAC secret loaded from `AUDIT_HASH_SECRET`. The application now fails fast on startup if that value is blank, too weak, or still set to the default placeholder.
+
+Set it before starting the service:
+
+```powershell
+$env:AUDIT_HASH_SECRET = "replace-with-a-long-random-secret"
+mvn spring-boot:run
+```
+
+Use a secret that is at least 16 characters long and includes mixed character classes. Do not leave `AUDIT_HASH_SECRET` unset in production or test-like environments.

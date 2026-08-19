@@ -20,15 +20,14 @@ public class AuditHashService {
     private static final Logger log = LoggerFactory.getLogger(AuditHashService.class);
 
     public static final String GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
+    private static final String DEFAULT_SECRET = "change-me-in-production";
     private static final String HMAC_ALGORITHM = "HmacSHA256";
+    private static final int MIN_SECRET_LENGTH = 16;
 
     private final byte[] signingKey;
 
     public AuditHashService(@Value("${audit.hash.secret:change-me-in-production}") String secret) {
-        if (secret == null || secret.isBlank()) {
-            throw new IllegalArgumentException("audit.hash.secret must be configured");
-        }
-        this.signingKey = secret.getBytes(StandardCharsets.UTF_8);
+        this.signingKey = validateSecret(secret).getBytes(StandardCharsets.UTF_8);
     }
 
     public String currentHash(
@@ -103,5 +102,48 @@ public class AuditHashService {
                 .append(normalized.length())
                 .append(':')
                 .append(normalized);
+    }
+
+    private String validateSecret(String secret) {
+        String normalized = secret == null ? "" : secret.trim();
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException("AUDIT_HASH_SECRET must be set to a non-blank value");
+        }
+        if (DEFAULT_SECRET.equals(normalized)) {
+            throw new IllegalArgumentException("AUDIT_HASH_SECRET must not use the default placeholder value");
+        }
+        if (normalized.length() < MIN_SECRET_LENGTH) {
+            throw new IllegalArgumentException("AUDIT_HASH_SECRET must be at least " + MIN_SECRET_LENGTH + " characters long");
+        }
+        if (characterClassCount(normalized) < 2) {
+            throw new IllegalArgumentException("AUDIT_HASH_SECRET must include at least two character classes");
+        }
+        return normalized;
+    }
+
+    private int characterClassCount(String value) {
+        boolean hasLower = false;
+        boolean hasUpper = false;
+        boolean hasDigit = false;
+        boolean hasSymbol = false;
+
+        for (char ch : value.toCharArray()) {
+            if (Character.isLowerCase(ch)) {
+                hasLower = true;
+            } else if (Character.isUpperCase(ch)) {
+                hasUpper = true;
+            } else if (Character.isDigit(ch)) {
+                hasDigit = true;
+            } else {
+                hasSymbol = true;
+            }
+        }
+
+        int count = 0;
+        if (hasLower) count++;
+        if (hasUpper) count++;
+        if (hasDigit) count++;
+        if (hasSymbol) count++;
+        return count;
     }
 }
