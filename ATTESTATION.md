@@ -2,7 +2,7 @@ Full name: Haresh Amin
 Email address : Haresh_Amin@persistent.com / AminHaresh26Aug@gmail.com
 Assignment title : Audit Log Service
 Assignment Start Date : 18 Aug 2026
-Assignment Submission Date : 18 Aug 2026
+Assignment Submission Date : 19 Aug 2026
 
 I, Haresh Amin, attest that this submission is my own individual work, completed on my own machine and accounts, and
 that it honestly reflects my development process and use of AI.
@@ -11,8 +11,8 @@ that it honestly reflects my development process and use of AI.
 
 ## 1. Metadata & Source Control
 * **Repository URL:** https://github.com/hamin88/Audit-Log-Service
-* **Branch:** `main` (or active development branch)
-* **Commit SHA:** [Insert Latest Commit SHA, , `5468c4f`]
+* **Branch:** `main`
+* **Commit SHA:** `f41d7e7`
 
 ---
 

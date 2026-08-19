@@ -117,7 +117,7 @@ mvn spring-boot:run
 
 ### Schema initialization
 
-The project uses JPA with `ddl-auto: update`, so the application will initialize the schema on startup against PostgreSQL.
+The project uses JPA with flyway, so the application will initialize the schema on startup against PostgreSQL.
 
 The database table is created as `audit_events` using the `AuditEvent` entity mapping.
 
