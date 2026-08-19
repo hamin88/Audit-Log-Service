@@ -27,8 +27,10 @@ import java.util.concurrent.Future;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = "audit.retention.period=PT0S")
@@ -202,6 +204,40 @@ class AuditEventApiIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsAnonymousRequestsWithBasicAuthChallenge() throws Exception {
+        mockMvc.perform(get("/audit/events"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Basic realm=\"Realm\""));
+    }
+
+    @Test
+    void deniesNonAdminWritesAndNonExporterVerification() throws Exception {
+        mockMvc.perform(post("/audit/events")
+                        .with(httpBasic("audit-reader", "audit-reader-pass"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "eventType": "RECORD_READ",
+                                  "actorId": "auditor-1",
+                                  "resourceType": "CLIENT_ACCOUNT",
+                                  "resourceId": "acct-100",
+                                  "payload": {"reason": "regulatory-review"}
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-reader", "audit-reader-pass")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void allowsOptionsPreflightWithoutAuthentication() throws Exception {
+        mockMvc.perform(options("/audit/events"))
+                .andExpect(status().isOk());
     }
 
     @Test

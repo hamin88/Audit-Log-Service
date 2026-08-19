@@ -18,6 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -96,6 +97,38 @@ class AuditLogServiceQaIntegrationTest {
                 .andExpect(jsonPath("$.content.length()").value(2))
                 .andExpect(jsonPath("$.content[0].actorId").value("operator-1"))
                 .andExpect(jsonPath("$.content[0].resourceType").value("CLIENT_ACCOUNT"));
+    }
+
+    @Test
+    void securityLayer_requiresAuthenticationAndAppropriateRoles() throws Exception {
+        mockMvc.perform(post("/audit/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "eventType": "RECORD_READ",
+                                  "actorId": "auditor-qa",
+                                  "resourceType": "CLIENT_ACCOUNT",
+                                  "resourceId": "acct-qa-unauth",
+                                  "payload": {"reason": "compliance-review"}
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Basic realm=\"Realm\""));
+
+        mockMvc.perform(get("/audit/events")
+                        .with(httpBasic("audit-exporter", "audit-exporter-pass")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/audit/export")
+                        .with(httpBasic("audit-reader", "audit-reader-pass")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/audit/verify")
+                        .with(httpBasic("audit-reader", "audit-reader-pass")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(options("/audit/export"))
+                .andExpect(status().isOk());
     }
 
     @Test
