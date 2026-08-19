@@ -189,8 +189,8 @@ class JpaAuditEventRepository implements AuditEventRepository {
     }
 
     @Override
-    public LedgerHead getLedgerHead() {
-        LedgerHead head = entityManager.find(LedgerHead.class, "HEAD");
+    public LedgerHead getLedgerHeadForUpdate() {
+        LedgerHead head = entityManager.find(LedgerHead.class, "HEAD", LockModeType.PESSIMISTIC_WRITE);
         if (head == null) {
             throw new IllegalStateException("Ledger head singleton not initialized. Ensure DataInitializer has run.");
         }

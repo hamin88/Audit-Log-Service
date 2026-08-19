@@ -31,10 +31,10 @@ public interface AuditEventRepository {
     Page<AuditEvent> export(AuditExportCriteria criteria, Pageable pageable);
 
     /**
-     * Gets the ledger head with optimistic locking.
-     * The version field detects concurrent modifications.
+     * Gets the ledger head singleton. The row version is used to detect
+     * concurrent updates to the tail record.
      */
-    LedgerHead getLedgerHead();
+    LedgerHead getLedgerHeadForUpdate();
 
     /**
      * Updates the ledger head with the new latest event ID.
