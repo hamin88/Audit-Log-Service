@@ -2,6 +2,7 @@ package com.example.auditlog.service;
 
 import com.example.auditlog.api.AuditEventRequest;
 import com.example.auditlog.domain.AuditEvent;
+import com.example.auditlog.domain.LedgerHead;
 import com.example.auditlog.repository.AuditEventRepository;
 import com.example.auditlog.repository.AuditEventSearchCriteria;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -10,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,56 +31,66 @@ public class AuditEventService {
     private final AuditEventRepository auditEventRepository;
     private final AuditHashService auditHashService;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
     public AuditEventService(
             AuditEventRepository auditEventRepository,
             AuditHashService auditHashService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            PlatformTransactionManager transactionManager
     ) {
         this.auditEventRepository = auditEventRepository;
         this.auditHashService = auditHashService;
         this.objectMapper = objectMapper;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_SERIALIZABLE);
     }
 
-    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.SERIALIZABLE)
     public AuditEvent append(AuditEventRequest request) {
         APPEND_LOCK.lock();
         try {
-            UUID eventId = UUID.randomUUID();
-            Instant timestamp = nextMonotonicTimestamp();
-            String payload = canonicalPayload(request);
-            log.info("Preparing append eventId={} eventType={} actorId={} resourceId={} timestamp={}", eventId, request.eventType(), request.actorId(), request.resourceId(), timestamp);
+            return transactionTemplate.execute(status -> {
+                UUID eventId = UUID.randomUUID();
+                Instant timestamp = nextMonotonicTimestamp();
+                String payload = canonicalPayload(request);
+                log.info("Preparing append eventId={} eventType={} actorId={} resourceId={} timestamp={}", eventId, request.eventType(), request.actorId(), request.resourceId(), timestamp);
 
-            String previousHash = auditEventRepository.findLatestForUpdate()
-                    .map(AuditEvent::getCurrentHash)
-                    .orElse(AuditHashService.GENESIS_HASH);
+                LedgerHead ledgerHead = auditEventRepository.getLedgerHead();
+                String previousHash = ledgerHead.getLatestEventId() == null
+                        ? AuditHashService.GENESIS_HASH
+                        : auditEventRepository.findById(ledgerHead.getLatestEventId())
+                                .map(AuditEvent::getCurrentHash)
+                                .orElse(AuditHashService.GENESIS_HASH);
 
-            String currentHash = auditHashService.currentHash(
-                    eventId,
-                    timestamp,
-                    request.eventType(),
-                    request.actorId(),
-                    request.resourceType(),
-                    request.resourceId(),
-                    payload,
-                    previousHash
-            );
+                String currentHash = auditHashService.currentHash(
+                        eventId,
+                        timestamp,
+                        request.eventType(),
+                        request.actorId(),
+                        request.resourceType(),
+                        request.resourceId(),
+                        payload,
+                        previousHash
+                );
 
-            AuditEvent event = new AuditEvent(
-                    eventId,
-                    timestamp,
-                    request.eventType(),
-                    request.actorId(),
-                    request.resourceType(),
-                    request.resourceId(),
-                    payload,
-                    previousHash,
-                    currentHash
-            );
-            AuditEvent persisted = auditEventRepository.append(event);
+                AuditEvent event = new AuditEvent(
+                        eventId,
+                        timestamp,
+                        request.eventType(),
+                        request.actorId(),
+                        request.resourceType(),
+                        request.resourceId(),
+                        payload,
+                        previousHash,
+                        currentHash
+                );
+                AuditEvent persisted = auditEventRepository.append(event);
+                ledgerHead.setLatestEventId(persisted.getEventId());
+                auditEventRepository.updateLedgerHead(ledgerHead);
 
-            log.info("Audit event appended eventId={} previousHash={} currentHash={}", eventId, previousHash, currentHash);
-            return persisted;
+                log.info("Audit event appended eventId={} previousHash={} currentHash={}", eventId, previousHash, currentHash);
+                return persisted;
+            });
         } finally {
             APPEND_LOCK.unlock();
         }

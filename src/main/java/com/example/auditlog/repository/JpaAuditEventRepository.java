@@ -31,6 +31,11 @@ class JpaAuditEventRepository implements AuditEventRepository {
     }
 
     @Override
+    public Optional<AuditEvent> findById(UUID eventId) {
+        return Optional.ofNullable(entityManager.find(AuditEvent.class, eventId));
+    }
+
+    @Override
     public Optional<AuditEvent> findLatest() {
         return entityManager.createQuery(
                         "select e from AuditEvent e order by e.timestamp desc, e.eventId desc",

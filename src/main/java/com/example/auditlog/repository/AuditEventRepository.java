@@ -14,6 +14,8 @@ public interface AuditEventRepository {
 
     AuditEvent append(AuditEvent auditEvent);
 
+    Optional<AuditEvent> findById(UUID eventId);
+
     Optional<AuditEvent> findLatest();
 
     Optional<AuditEvent> findLatestForUpdate();
