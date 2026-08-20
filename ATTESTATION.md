@@ -1,5 +1,5 @@
 Full name: Haresh Amin
-Email address : Haresh_Amin@persistent.com / AminHaresh26Aug@gmail.com
+Email address : AminHaresh26Aug@gmail.com
 Assignment title : Audit Log Service
 Assignment Start Date : 18 Aug 2026
 Assignment Submission Date : 19 Aug 2026
